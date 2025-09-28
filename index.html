@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WebRTC Test</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 10px;
+    }
+    .video-container {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 900px;
+    }
+    video {
+      width: 48%;
+      border: 2px solid black;
+      border-radius: 6px;
+    }
+
+    /* Стиль для устройства-инициатора (Offer) */
+    .role-offer #localVideo { order: 2; }   /* локальное видео справа */
+    .role-offer #remoteVideo { order: 1; }  /* удалённое слева */
+
+    /* Стиль для устройства-ответчика (Answer) */
+    .role-answer #localVideo { order: 1; }  /* локальное слева */
+    .role-answer #remoteVideo { order: 2; } /* удалённое справа */
+
+    textarea {
+      width: 90%;
+      height: 100px;
+      margin: 5px 0;
+    }
+    h3 {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body class="role-offer"><!-- поменяй на role-answer для второго устройства -->
+  <h2>WebRTC P2P Test (без сервера)</h2>
+  
+  <div class="video-container">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+
+  <h3>Step 1: Создать Offer</h3>
+  <button id="createOffer">Создать Offer</button>
+  <textarea id="offer"></textarea>
+
+  <h3>Step 2: Вставить Answer</h3>
+  <textarea id="answer"></textarea>
+  <button id="applyAnswer">Применить Answer</button>
+
+  <h3>Step 3: Для второго устройства</h3>
+  <textarea id="remoteOffer"></textarea>
+  <button id="createAnswer">Создать Answer</button>
+  <textarea id="localAnswer"></textarea>
+
+  <script>
+    let pc = new RTCPeerConnection({ 
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }] 
+    });
+
+    let localVideo = document.getElementById("localVideo");
+    let remoteVideo = document.getElementById("remoteVideo");
+
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        localVideo.srcObject = stream;
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      });
+
+    pc.ontrack = event => {
+      remoteVideo.srcObject = event.streams[0];
+    };
+
+    let iceCandidates = [];
+    pc.onicecandidate = event => {
+      if (event.candidate) iceCandidates.push(event.candidate);
+    };
+
+    document.getElementById("createOffer").onclick = async () => {
+      let offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      setTimeout(() => {
+        document.getElementById("offer").value = JSON.stringify(pc.localDescription);
+      }, 1000);
+    };
+
+    document.getElementById("applyAnswer").onclick = async () => {
+      let answer = JSON.parse(document.getElementById("answer").value);
+      await pc.setRemoteDescription(answer);
+    };
+
+    document.getElementById("createAnswer").onclick = async () => {
+      let remoteOffer = JSON.parse(document.getElementById("remoteOffer").value);
+      await pc.setRemoteDescription(remoteOffer);
+      let answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      setTimeout(() => {
+        document.getElementById("localAnswer").value = JSON.stringify(pc.localDescription);
+      }, 1000);
+    };
+  </script>
+</body>
+</html>
