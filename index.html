@@ -1,113 +1,204 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>WebRTC Test</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin: 0;
-      padding: 10px;
-    }
-    .video-container {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      max-width: 900px;
-    }
-    video {
-      width: 48%;
-      border: 2px solid black;
-      border-radius: 6px;
-    }
-
-    /* Стиль для устройства-инициатора (Offer) */
-    .role-offer #localVideo { order: 2; }   /* локальное видео справа */
-    .role-offer #remoteVideo { order: 1; }  /* удалённое слева */
-
-    /* Стиль для устройства-ответчика (Answer) */
-    .role-answer #localVideo { order: 1; }  /* локальное слева */
-    .role-answer #remoteVideo { order: 2; } /* удалённое справа */
-
-    textarea {
-      width: 90%;
-      height: 100px;
-      margin: 5px 0;
-    }
-    h3 {
-      margin-top: 20px;
-    }
-  </style>
+<meta charset="utf-8" />
+<title>Simple WebRTC via ngrok (signaling)</title>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; padding: 18px; max-width: 900px; margin: 0 auto; }
+  .row { display:flex; gap:12px; align-items:center; margin-bottom:8px; }
+  video { width:48%; border-radius:6px; border:1px solid #222; background:#000; }
+  #controls { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+  input[type=text] { width:420px; padding:8px; }
+  textarea { width:100%; height:80px; margin-top:8px; font-family: monospace; }
+  button { padding:8px 12px; cursor:pointer; }
+  .log { margin-top:8px; height:120px; overflow:auto; background:#111; color:#0f0; padding:8px; font-family: monospace; font-size:12px; }
+  .hint { color:#666; font-size:13px; margin-bottom:8px; }
+</style>
 </head>
-<body class="role-offer"><!-- поменяй на role-answer для второго устройства -->
-  <h2>WebRTC P2P Test (без сервера)</h2>
-  
-  <div class="video-container">
+<body>
+  <h1>WebRTC тест (ngrok / локальный signaling)</h1>
+  <div class="hint">1) Запусти signaling-server.js локально. 2) ngrok http 8080 → возьми https URL и вставь в поле WebSocket URL как <code>wss://...</code>. 3) Открой страницу на двух устройствах (https), Connect, Start, и на одном — Call.</div>
+
+  <div class="row">
+    <label>WebSocket (wss) URL:</label>
+    <input id="wsUrl" type="text" placeholder="wss://abc123.ngrok-free.app" />
+    <button id="connectBtn">Connect</button>
+  </div>
+
+  <div class="row">
+    <button id="startBtn" disabled>Start (getUserMedia)</button>
+    <button id="callBtn" disabled>Call (createOffer)</button>
+    <button id="hangBtn" disabled>Hangup</button>
+  </div>
+
+  <div style="display:flex; gap:12px; margin-top:12px;">
     <video id="localVideo" autoplay playsinline muted></video>
     <video id="remoteVideo" autoplay playsinline></video>
   </div>
 
-  <h3>Step 1: Создать Offer</h3>
-  <button id="createOffer">Создать Offer</button>
-  <textarea id="offer"></textarea>
+  <div id="controls">
+    <div style="flex:1">
+      <div class="hint">Логи сигнального канала (и важные сообщения)</div>
+      <div id="log" class="log"></div>
+    </div>
+  </div>
 
-  <h3>Step 2: Вставить Answer</h3>
-  <textarea id="answer"></textarea>
-  <button id="applyAnswer">Применить Answer</button>
+<script>
+  let ws = null;
+  let pc = null;
+  let localStream = null;
 
-  <h3>Step 3: Для второго устройства</h3>
-  <textarea id="remoteOffer"></textarea>
-  <button id="createAnswer">Создать Answer</button>
-  <textarea id="localAnswer"></textarea>
+  const logEl = document.getElementById('log');
+  const connectBtn = document.getElementById('connectBtn');
+  const startBtn = document.getElementById('startBtn');
+  const callBtn = document.getElementById('callBtn');
+  const hangBtn = document.getElementById('hangBtn');
+  const wsUrlInput = document.getElementById('wsUrl');
 
-  <script>
-    let pc = new RTCPeerConnection({ 
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }] 
+  function log(...args){
+    console.log(...args);
+    logEl.innerText += args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ') + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  connectBtn.onclick = () => {
+    const url = wsUrlInput.value.trim();
+    if(!url){ alert('Введите wss URL (ngrok https адрес).'); return; }
+    try {
+      ws = new WebSocket(url);
+    } catch(e){
+      alert('Неправильный URL или браузер не поддерживает WebSocket: ' + e.message);
+      return;
+    }
+    ws.onopen = () => {
+      log('WS connected to', url);
+      startBtn.disabled = false;
+    };
+    ws.onmessage = async (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        log('<<', msg.type || typeof msg);
+        if(msg.type === 'offer') {
+          // если приходят offer — создаём pc (если нет), ставим remote и отвечаем
+          await ensurePc();
+          try {
+            await pc.setRemoteDescription(msg);
+          } catch(e){
+            log('Error setRemoteDescription(offer):', e);
+            return;
+          }
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify(pc.localDescription));
+          log('>> sent answer');
+        } else if(msg.type === 'answer') {
+          if(!pc){ log('Got answer but pc отсутствует'); return; }
+          try {
+            // защита от "wrong state"
+            await pc.setRemoteDescription(msg);
+            log('Applied remote answer');
+          } catch(e){
+            log('Error setRemoteDescription(answer):', e);
+          }
+        } else if(msg.type === 'candidate') {
+          if(!pc){ log('Got candidate but pc отсутствует'); return; }
+          try {
+            await pc.addIceCandidate(msg.candidate);
+            log('Added remote candidate');
+          } catch(e){
+            log('addIceCandidate error:', e);
+          }
+        } else {
+          log('Unknown msg', msg);
+        }
+      } catch(e){
+        log('parse message error', e);
+      }
+    };
+    ws.onclose = () => { log('WS closed'); startBtn.disabled = true; callBtn.disabled = true; hangBtn.disabled = true; };
+    ws.onerror = (e) => { log('WS error', e); };
+  };
+
+  async function ensurePc(){
+    if(pc) return;
+    pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
 
-    let localVideo = document.getElementById("localVideo");
-    let remoteVideo = document.getElementById("remoteVideo");
+    pc.onicecandidate = e => {
+      if(e.candidate && ws && ws.readyState === WebSocket.OPEN){
+        ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+      }
+    };
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        localVideo.srcObject = stream;
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    pc.ontrack = e => {
+      log('ontrack — got remote stream');
+      document.getElementById('remoteVideo').srcObject = e.streams[0];
+    };
+
+    pc.onconnectionstatechange = () => {
+      log('PC state:', pc.connectionState, 'signalingState:', pc.signalingState);
+      if(pc.connectionState === 'connected') {
+        hangBtn.disabled = false;
+      }
+    };
+
+    // добавить локальные треки, если они уже захвачены
+    if(localStream){
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    }
+  }
+
+  startBtn.onclick = async () => {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      document.getElementById('localVideo').srcObject = localStream;
+      log('Local media captured');
+      await ensurePc();
+      // если pc только что создан, локальные треки уже будут добавлены в ensurePc()
+      localStream.getTracks().forEach(track => {
+        // если track уже добавлен — addTrack создаст sender отдельно, не важно
+        // but ensurePc already added; safe to add here if not duplicate
+        try { pc.addTrack(track, localStream); } catch(e){}
       });
+      callBtn.disabled = false;
+    } catch(e){
+      log('getUserMedia error:', e.name || e.message || e);
+      if(e.name === 'NotFoundError' || e.name === 'OverconstrainedError') {
+        alert('Камера/микрофон не найдены или недоступны. Проверьте разрешения и устройства.');
+      } else {
+        alert('Ошибка доступа к камере/микрофону: ' + (e.message || e));
+      }
+    }
+  };
 
-    pc.ontrack = event => {
-      remoteVideo.srcObject = event.streams[0];
-    };
+  callBtn.onclick = async () => {
+    if(!ws || ws.readyState !== WebSocket.OPEN){ alert('WS не подключён — нажми Connect'); return; }
+    await ensurePc();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    // отправляем SDP (offer) по WS
+    ws.send(JSON.stringify(pc.localDescription));
+    log('>> sent offer');
+  };
 
-    let iceCandidates = [];
-    pc.onicecandidate = event => {
-      if (event.candidate) iceCandidates.push(event.candidate);
-    };
-
-    document.getElementById("createOffer").onclick = async () => {
-      let offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      setTimeout(() => {
-        document.getElementById("offer").value = JSON.stringify(pc.localDescription);
-      }, 1000);
-    };
-
-    document.getElementById("applyAnswer").onclick = async () => {
-      let answer = JSON.parse(document.getElementById("answer").value);
-      await pc.setRemoteDescription(answer);
-    };
-
-    document.getElementById("createAnswer").onclick = async () => {
-      let remoteOffer = JSON.parse(document.getElementById("remoteOffer").value);
-      await pc.setRemoteDescription(remoteOffer);
-      let answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      setTimeout(() => {
-        document.getElementById("localAnswer").value = JSON.stringify(pc.localDescription);
-      }, 1000);
-    };
-  </script>
+  hangBtn.onclick = () => {
+    if(pc){
+      pc.getSenders().forEach(s => { try { s.track && s.track.stop(); } catch(e){} });
+      pc.close();
+      pc = null;
+    }
+    if(localStream){
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
+    document.getElementById('localVideo').srcObject = null;
+    document.getElementById('remoteVideo').srcObject = null;
+    callBtn.disabled = true;
+    hangBtn.disabled = true;
+    startBtn.disabled = false;
+    log('Call ended / resources released');
+  };
+</script>
 </body>
 </html>
