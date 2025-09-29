@@ -1,125 +1,572 @@
-<!doctype html>
-<html>
-
+<!DOCTYPE html>
+<html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <title>WebRTC Simple</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Chat Roulette</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    body {
-      font-family: sans-serif;
-      min-width: 100%;
-      max-width: 100%;
-    }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
 
-    button {
-      display: block;
-      padding: 16px 24px;
-      height: 60px;
-      font-size: 20px;
-      cursor: pointer;
-      margin: 12px auto;
-      text-align: center;
-      width: 30%;
-    }
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            text-align: center;
+        }
 
-    .log {
-      margin-top: 8px;
-      height: 120px;
-      overflow: auto;
-      background: #111;
-      color: #0f0;
-      padding: 8px;
-      font-family: monospace;
-      font-size: 12px;
-      display: none;
-    }
+        h1 {
+            color: white;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
 
-    #localVideo {
-      transform: scaleX(-1);
-    }
+        .server-info {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
 
-    #remoteVideo {
-      transform: scaleX(-1);
-    }
+        .video-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
 
-    .videos {
-      display: flex;
-      flex-direction: column;
-    }
+        .video-wrapper {
+            position: relative;
+            background: black;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+        }
 
-    video {
-      width: 100%;
-      max-height: 700px;
-      object-fit: fill;
-      background: #000;
-    }
-  </style>
+        video {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            background: #000;
+        }
+
+        .video-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 25px;
+            background: #4CAF50;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        button:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #leaveBtn {
+            background: #f44336;
+        }
+
+        #leaveBtn:hover {
+            background: #da190b;
+        }
+
+        #nextBtn {
+            background: #2196F3;
+        }
+
+        #nextBtn:hover {
+            background: #0b7dda;
+        }
+
+        #connectBtn {
+            background: #FF9800;
+        }
+
+        #connectBtn:hover {
+            background: #F57C00;
+        }
+
+        .status {
+            color: white;
+            font-size: 18px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .connection-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .connected {
+            background: #4CAF50;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+
+        .disconnected {
+            background: #f44336;
+        }
+
+        .connecting {
+            background: #FF9800;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .video-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .video-wrapper {
+                width: 100%;
+                max-width: 400px;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
 </head>
-
 <body>
-  <h2>WebRTC Video Chat</h2>
-  <video id="localVideo" autoplay playsinline muted></video>
-  <video id="remoteVideo" autoplay playsinline></video>
+    <div class="container">
+        <h1>🎥 Video Chat Roulette</h1>
+        
+        <div class="server-info">
+            <strong>WebSocket сервер:</strong> 
+            <span id="wsUrlDisplay">wss://your-ngrok-subdomain.ngrok.io/ws</span>
+            <br>
+            <small>Статус: <span id="connectionStatus"><span class="connection-status disconnected"></span>Отключено</span></small>
+        </div>
+        
+        <div class="video-container">
+            <div class="video-wrapper">
+                <video id="localVideo" autoplay muted></video>
+                <div class="video-label">Вы</div>
+            </div>
+            <div class="video-wrapper">
+                <video id="remoteVideo" autoplay></video>
+                <div class="video-label">Собеседник</div>
+            </div>
+        </div>
 
-  <script>
-    const roomId = "room123"; // Все заходят в одну комнату
-    const ws = new WebSocket("wss://07d6f16c7409.ngrok-free.app");
+        <div class="status" id="status">
+            Нажмите "Подключиться к серверу" для начала
+        </div>
 
-    let pc;
+        <div class="controls">
+            <button id="connectBtn" onclick="connectWebSocket()">Подключиться к серверу</button>
+            <button id="startBtn" onclick="startChat()" disabled>Начать поиск</button>
+            <button id="leaveBtn" onclick="leaveChat()" disabled>Покинуть чат</button>
+            <button id="nextBtn" onclick="nextPartner()" disabled>Следующий собеседник</button>
+        </div>
+    </div>
 
-    ws.onopen = () => {
-      console.log("✅ Connected to signaling server");
-      ws.send(JSON.stringify({ type: "join", room: roomId }));
-      start();
-    };
+    <script>
+        // КОНФИГУРАЦИЯ - ЗАМЕНИТЕ НА ВАШ NGROK URL
+        
+        const WEBSOCKET_URL = 'wss://18c93265f6a6.ngrok-free.app/ws';
+        // Пример: 'wss://abc1-23de-456f.ngrok-free.app/ws'
 
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
+        class VideoChat {
+            constructor() {
+                this.localStream = null;
+                this.remoteStream = null;
+                this.peerConnection = null;
+                this.socket = null;
+                this.isConnected = false;
+                
+                this.localVideo = document.getElementById('localVideo');
+                this.remoteVideo = document.getElementById('remoteVideo');
+                this.status = document.getElementById('status');
+                this.startBtn = document.getElementById('startBtn');
+                this.leaveBtn = document.getElementById('leaveBtn');
+                this.nextBtn = document.getElementById('nextBtn');
+                this.connectBtn = document.getElementById('connectBtn');
+                this.connectionStatus = document.getElementById('connectionStatus');
+                this.wsUrlDisplay = document.getElementById('wsUrlDisplay');
+                
+                // Показываем WebSocket URL на странице
+                this.wsUrlDisplay.textContent = WEBSOCKET_URL;
+                
+                this.initMedia();
+            }
 
-      if (data.type === "offer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(data));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify(pc.localDescription));
-      } else if (data.type === "answer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(data));
-      } else if (data.type === "candidate") {
-        try {
-          await pc.addIceCandidate(data.candidate);
-        } catch (e) {
-          console.error("Error adding candidate", e);
+            async initMedia() {
+                try {
+                    this.localStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            frameRate: { ideal: 30 }
+                        },
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    this.localVideo.srcObject = this.localStream;
+                    this.updateStatus('Камера и микрофон включены');
+                } catch (error) {
+                    console.error('Ошибка доступа к медиаустройствам:', error);
+                    this.updateStatus('Ошибка доступа к камере/микрофону. Проверьте разрешения.');
+                    this.disableAllControls();
+                }
+            }
+
+            connectWebSocket() {
+                this.updateStatus('Подключение к WebSocket серверу...');
+                this.updateConnectionStatus('connecting', 'Подключение...');
+                this.connectBtn.disabled = true;
+
+                try {
+                    this.socket = new WebSocket(WEBSOCKET_URL);
+
+                    this.socket.onopen = () => {
+                        this.updateStatus('Подключено к серверу! Нажмите "Начать поиск"');
+                        this.updateConnectionStatus('connected', 'Подключено');
+                        this.startBtn.disabled = false;
+                        this.connectBtn.style.display = 'none';
+                    };
+
+                    this.socket.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleMessage(data);
+                    };
+
+                    this.socket.onclose = (event) => {
+                        console.log('WebSocket закрыт:', event);
+                        this.updateStatus(`Соединение с сервером потеряно. Попробуйте переподключиться.`);
+                        this.updateConnectionStatus('disconnected', 'Отключено');
+                        this.disableChatControls();
+                        this.connectBtn.disabled = false;
+                        this.connectBtn.style.display = 'inline-block';
+                        
+                        // Автопереподключение через 3 секунды
+                        setTimeout(() => {
+                            if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
+                                this.connectWebSocket();
+                            }
+                        }, 3000);
+                    };
+
+                    this.socket.onerror = (error) => {
+                        console.error('WebSocket ошибка:', error);
+                        this.updateStatus('Ошибка подключения к серверу');
+                        this.updateConnectionStatus('disconnected', 'Ошибка подключения');
+                        this.connectBtn.disabled = false;
+                    };
+
+                } catch (error) {
+                    this.updateStatus('Ошибка создания WebSocket соединения');
+                    this.updateConnectionStatus('disconnected', 'Ошибка');
+                    this.connectBtn.disabled = false;
+                    console.error('Connection error:', error);
+                }
+            }
+
+            updateConnectionStatus(status, text) {
+                const statusElement = this.connectionStatus;
+                const indicator = statusElement.querySelector('.connection-status');
+                
+                // Удаляем все классы статуса
+                indicator.classList.remove('connected', 'disconnected', 'connecting');
+                
+                // Добавляем нужный класс
+                indicator.classList.add(status);
+                
+                // Обновляем текст
+                statusElement.innerHTML = `<span class="connection-status ${status}"></span>${text}`;
+            }
+
+            handleMessage(data) {
+                console.log('Получено сообщение:', data.type);
+                
+                switch (data.type) {
+                    case 'connected':
+                        this.updateStatus('WebSocket подключен. Нажмите "Начать поиск"');
+                        break;
+                    case 'waiting':
+                        this.updateStatus('🔍 Поиск собеседника...');
+                        break;
+                    case 'chat_started':
+                        this.updateStatus('✅ Собеседник найден! Начинаем видеочат');
+                        this.startChat();
+                        break;
+                    case 'partner_left':
+                        this.updateStatus('❌ Собеседник покинул чат');
+                        this.cleanupPeerConnection();
+                        this.enableSearchControls();
+                        break;
+                    case 'offer':
+                        this.handleOffer(data.offer);
+                        break;
+                    case 'answer':
+                        this.handleAnswer(data.answer);
+                        break;
+                    case 'ice-candidate':
+                        this.handleIceCandidate(data['ice-candidate']);
+                        break;
+                    case 'pong':
+                        // Пинг-понг для поддержания соединения
+                        break;
+                }
+            }
+
+            async startChat() {
+                if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+                    this.updateStatus('Нет подключения к серверу');
+                    return;
+                }
+
+                this.updateStatus('Установление соединения...');
+                await this.createPeerConnection();
+                this.isConnected = true;
+                this.disableSearchControls();
+            }
+
+            async createPeerConnection() {
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+
+                this.peerConnection = new RTCPeerConnection(configuration);
+
+                // Добавляем локальный поток
+                this.localStream.getTracks().forEach(track => {
+                    this.peerConnection.addTrack(track, this.localStream);
+                });
+
+                // Получаем удаленный поток
+                this.peerConnection.ontrack = (event) => {
+                    console.log('Получен удаленный поток');
+                    this.remoteVideo.srcObject = event.streams[0];
+                    this.updateStatus('📹 Видеосвязь установлена!');
+                };
+
+                // Обработка ICE кандидатов
+                this.peerConnection.onicecandidate = (event) => {
+                    if (event.candidate && this.socket) {
+                        this.socket.send(JSON.stringify({
+                            type: 'ice-candidate',
+                            'ice-candidate': event.candidate
+                        }));
+                    }
+                };
+
+                this.peerConnection.oniceconnectionstatechange = () => {
+                    console.log('ICE connection state:', this.peerConnection.iceConnectionState);
+                    if (this.peerConnection.iceConnectionState === 'connected') {
+                        this.updateStatus('✅ Соединение установлено!');
+                    } else if (this.peerConnection.iceConnectionState === 'disconnected') {
+                        this.updateStatus('⚠️ Соединение прервано');
+                    }
+                };
+
+                // Создаем предложение
+                try {
+                    const offer = await this.peerConnection.createOffer({
+                        offerToReceiveAudio: true,
+                        offerToReceiveVideo: true
+                    });
+                    await this.peerConnection.setLocalDescription(offer);
+                    
+                    this.socket.send(JSON.stringify({
+                        type: 'offer',
+                        offer: offer
+                    }));
+                } catch (error) {
+                    console.error('Ошибка создания offer:', error);
+                    this.updateStatus('❌ Ошибка установления соединения');
+                }
+            }
+
+            async handleOffer(offer) {
+                await this.createPeerConnection();
+                await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                
+                const answer = await this.peerConnection.createAnswer();
+                await this.peerConnection.setLocalDescription(answer);
+                
+                this.socket.send(JSON.stringify({
+                    type: 'answer',
+                    answer: answer
+                }));
+            }
+
+            async handleAnswer(answer) {
+                if (this.peerConnection) {
+                    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                }
+            }
+
+            async handleIceCandidate(candidate) {
+                if (this.peerConnection && candidate) {
+                    try {
+                        await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } catch (error) {
+                        console.error('Ошибка добавления ICE candidate:', error);
+                    }
+                }
+            }
+
+            cleanupPeerConnection() {
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                    this.peerConnection = null;
+                }
+                this.remoteVideo.srcObject = null;
+                this.isConnected = false;
+            }
+
+            updateStatus(message) {
+                this.status.textContent = message;
+                console.log('Status:', message);
+            }
+
+            disableSearchControls() {
+                this.startBtn.disabled = true;
+                this.leaveBtn.disabled = false;
+                this.nextBtn.disabled = false;
+            }
+
+            enableSearchControls() {
+                this.startBtn.disabled = false;
+                this.leaveBtn.disabled = true;
+                this.nextBtn.disabled = true;
+            }
+
+            disableChatControls() {
+                this.startBtn.disabled = true;
+                this.leaveBtn.disabled = true;
+                this.nextBtn.disabled = true;
+            }
+
+            disableAllControls() {
+                this.connectBtn.disabled = true;
+                this.disableChatControls();
+            }
+
+            join() {
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                    this.socket.send(JSON.stringify({ type: 'join' }));
+                    this.updateStatus('🔍 Поиск собеседника...');
+                } else {
+                    this.updateStatus('❌ Нет подключения к серверу');
+                }
+            }
+
+            leave() {
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                    this.socket.send(JSON.stringify({ type: 'leave' }));
+                }
+                this.cleanupPeerConnection();
+                this.updateStatus('Чат завершен');
+                this.enableSearchControls();
+            }
+
+            next() {
+                this.leave();
+                setTimeout(() => this.join(), 1000);
+            }
         }
-      }
-    };
 
-    async function start() {
-      pc = new RTCPeerConnection();
+        let videoChat;
 
-      pc.onicecandidate = ({ candidate }) => {
-        if (candidate) {
-          ws.send(JSON.stringify({ type: "candidate", candidate }));
+        // Инициализация при загрузке страницы
+        window.addEventListener('load', () => {
+            videoChat = new VideoChat();
+        });
+
+        // Глобальные функции для кнопок
+        function connectWebSocket() {
+            videoChat.connectWebSocket();
         }
-      };
 
-      pc.ontrack = (event) => {
-        document.getElementById("remoteVideo").srcObject = event.streams[0];
-      };
+        function startChat() {
+            videoChat.join();
+        }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      document.getElementById("localVideo").srcObject = stream;
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        function leaveChat() {
+            videoChat.leave();
+        }
 
-      // Сделаем offer только когда мы первые
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      ws.send(JSON.stringify(pc.localDescription));
-    }
-  </script>
+        function nextPartner() {
+            videoChat.next();
+        }
+
+        // Автоматическое подключение при загрузке (опционально)
+        // setTimeout(() => connectWebSocket(), 1000);
+    </script>
 </body>
 </html>
