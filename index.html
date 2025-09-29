@@ -62,22 +62,20 @@
 </head>
 
 <body>
-  <div class="row">
-    <button id="callBtn" disabled>Найти собеседника</button>
-    <button id="hangBtn" disabled>Удалить Мирона из мира</button>
-  </div>
-
   <div style="display:flex; gap:12px; margin-top:12px;">
     <video id="localVideo" autoplay playsinline muted></video>
     <video id="remoteVideo" autoplay playsinline></video>
   </div>
+  <div class="row">
+    <button id="callBtn" disabled>Найти собеседника</button>
+    <button id="hangBtn" disabled>Hangup</button>
+  </div>
 
-  <div id="controls">
+  <!-- <div id="controls">
     <div style="flex:1">
-      <div class="hint">Логи сигнального канала (и важные сообщения)</div>
       <div id="log" class="log"></div>
     </div>
-  </div>
+  </div> -->
 
   <script>
     let ws = null;
@@ -88,7 +86,7 @@
     const callBtn = document.getElementById('callBtn');
     const hangBtn = document.getElementById('hangBtn');
 
-    const WS_URL = "wss://bc19a7e1703c.ngrok-free.app"; // твой адрес
+    const WS_URL = "wss://bc19a7e1703c.ngrok-free.app";
 
     function log(...args) {
       console.log(...args);
@@ -105,7 +103,6 @@
       }
       ws.onopen = () => {
         log('WS connected to', WS_URL);
-        // как только WS открыт — сразу пробуем запросить камеру
         initMedia();
       };
       ws.onmessage = async (ev) => {
