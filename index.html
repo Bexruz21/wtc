@@ -21,9 +21,12 @@
     }
 
     button {
-      padding: 8px 12px;
+      display: block;
+      padding: 16px 24px;
       cursor: pointer;
-      margin-top: 12px;
+      margin: 12px auto;
+      text-align: center;
+      width: 30%;
     }
 
     .log {
@@ -90,7 +93,7 @@
         document.getElementById('localVideo').srcObject = localStream;
         log('Local media started');
 
-        ws = new WebSocket('wss://your-ngrok-or-server-url');
+        ws = new WebSocket('wss://b3aa794a676f.ngrok-free.app');
         ws.onopen = () => log('WS connected');
         ws.onmessage = async (ev) => {
           const msg = JSON.parse(ev.data);
