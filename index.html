@@ -64,11 +64,10 @@
 <body>
   <div class="row">
     <label>WebSocket:</label>
-    <span>wss://abc123.ngrok-free.app</span>
+    <span>wss://bc19a7e1703c.ngrok-free.app</span>
   </div>
 
   <div class="row">
-    <button id="startBtn" disabled>Start (getUserMedia)</button>
     <button id="callBtn" disabled>Call (createOffer)</button>
     <button id="hangBtn" disabled>Hangup</button>
   </div>
@@ -91,11 +90,10 @@
     let localStream = null;
 
     const logEl = document.getElementById('log');
-    const startBtn = document.getElementById('startBtn');
     const callBtn = document.getElementById('callBtn');
     const hangBtn = document.getElementById('hangBtn');
 
-    const WS_URL = "wss://bc19a7e1703c.ngrok-free.app"
+    const WS_URL = "wss://bc19a7e1703c.ngrok-free.app"; // твой адрес
 
     function log(...args) {
       console.log(...args);
@@ -112,7 +110,8 @@
       }
       ws.onopen = () => {
         log('WS connected to', WS_URL);
-        startBtn.disabled = false;
+        // как только WS открыт — сразу пробуем запросить камеру
+        initMedia();
       };
       ws.onmessage = async (ev) => {
         try {
@@ -136,7 +135,7 @@
           log('parse message error', e);
         }
       };
-      ws.onclose = () => { log('WS closed'); startBtn.disabled = true; callBtn.disabled = true; hangBtn.disabled = true; };
+      ws.onclose = () => { log('WS closed'); callBtn.disabled = true; hangBtn.disabled = true; };
       ws.onerror = (e) => { log('WS error', e); };
     }
 
@@ -169,7 +168,7 @@
       }
     }
 
-    startBtn.onclick = async () => {
+    async function initMedia() {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById('localVideo').srcObject = localStream;
@@ -180,7 +179,7 @@
         log('getUserMedia error:', e);
         alert('Ошибка доступа к камере/микрофону: ' + (e.message || e));
       }
-    };
+    }
 
     callBtn.onclick = async () => {
       if (!ws || ws.readyState !== WebSocket.OPEN) { alert('WS не подключён'); return; }
@@ -205,16 +204,12 @@
       document.getElementById('remoteVideo').srcObject = null;
       callBtn.disabled = true;
       hangBtn.disabled = true;
-      startBtn.disabled = false;
       log('Call ended / resources released');
     };
 
-    // Автоподключение сразу при загрузке
     window.addEventListener('load', () => {
       connectWs();
     });
   </script>
 </body>
-
-
 </html>
