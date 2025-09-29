@@ -50,9 +50,8 @@
     video {
       width: 100%;
       height: 600px;
-      object-fit: cover;
-      border-radius: 6px;
-      border: 1px solid #222;
+      border: 0;
+      object-fit: contain;
       background: #000;
     }
   </style>
@@ -60,8 +59,8 @@
 
 <body>
   <div class="videos">
-    <video id="localVideo" autoplay playsinline muted></video>
     <video id="remoteVideo" autoplay playsinline></video>
+    <video id="localVideo" autoplay playsinline muted></video>
   </div>
 
   <button id="findBtn">Найти собеседника</button>
