@@ -1,82 +1,131 @@
 <!doctype html>
 <html>
+
 <head>
-<meta charset="utf-8" />
-<title>WebRTC Simple</title>
-<style>
-  body { font-family: sans-serif; padding: 18px; max-width: 900px; margin: 0 auto; }
-  video { width:48%; border-radius:6px; border:1px solid #222; background:#000; margin-bottom:8px; }
-  button { padding:8px 12px; cursor:pointer; margin-top:12px; }
-  .log { margin-top:8px; height:120px; overflow:auto; background:#111; color:#0f0; padding:8px; font-family: monospace; font-size:12px; }
-</style>
+  <meta charset="utf-8" />
+  <title>WebRTC Simple</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 18px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    video {
+      width: 48%;
+      border-radius: 6px;
+      border: 1px solid #222;
+      background: #000;
+      margin-bottom: 8px;
+    }
+
+    button {
+      padding: 8px 12px;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .log {
+      margin-top: 8px;
+      height: 120px;
+      overflow: auto;
+      background: #111;
+      color: #0f0;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    #localVideo {
+      transform: scaleX(-1);
+      /* зеркальное отображение */
+    }
+
+    #remoteVideo {
+      transform: none;
+      /* удалённое видео не зеркалить */
+    }
+    .videos {
+      display: flex;
+      flex-direction: column;
+    }
+    video {
+      flex: 1;
+    }
+  </style>
 </head>
+
 <body>
-<h1>WebRTC: Найти собеседника</h1>
+  <h1>WebRTC: Найти собеседника</h1>
 
-<video id="localVideo" autoplay playsinline muted></video>
-<video id="remoteVideo" autoplay playsinline></video>
+  <div class="videos">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
 
-<button id="findBtn">Найти собеседника</button>
-<div class="log" id="log"></div>
+  <button id="findBtn">Найти собеседника</button>
+  <div class="log" id="log"></div>
 
-<script>
-let ws = null;
-let pc = null;
-let localStream = null;
+  <script>
+    let ws = null;
+    let pc = null;
+    let localStream = null;
 
-const logEl = document.getElementById('log');
-const findBtn = document.getElementById('findBtn');
+    const logEl = document.getElementById('log');
+    const findBtn = document.getElementById('findBtn');
 
-function log(...args){
-  console.log(...args);
-  logEl.innerText += args.join(' ') + "\n";
-  logEl.scrollTop = logEl.scrollHeight;
-}
+    function log(...args) {
+      console.log(...args);
+      logEl.innerText += args.join(' ') + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
 
-// --- WebSocket connect & create PeerConnection ---
-async function startCall(){
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-    document.getElementById('localVideo').srcObject = localStream;
-    log('Local media started');
+    // --- WebSocket connect & create PeerConnection ---
+    async function startCall() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('localVideo').srcObject = localStream;
+        log('Local media started');
 
-    ws = new WebSocket('wss://your-ngrok-or-server-url');
-    ws.onopen = () => log('WS connected');
-    ws.onmessage = async (ev) => {
-      const msg = JSON.parse(ev.data);
-      if(msg.type==='offer'){
+        ws = new WebSocket('wss://your-ngrok-or-server-url');
+        ws.onopen = () => log('WS connected');
+        ws.onmessage = async (ev) => {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'offer') {
+            await ensurePc();
+            await pc.setRemoteDescription(msg);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify(pc.localDescription));
+          } else if (msg.type === 'answer') {
+            if (pc) await pc.setRemoteDescription(msg);
+          } else if (msg.type === 'candidate') {
+            if (pc) await pc.addIceCandidate(msg.candidate);
+          }
+        };
+
         await ensurePc();
-        await pc.setRemoteDescription(msg);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
         ws.send(JSON.stringify(pc.localDescription));
-      } else if(msg.type==='answer'){
-        if(pc) await pc.setRemoteDescription(msg);
-      } else if(msg.type==='candidate'){
-        if(pc) await pc.addIceCandidate(msg.candidate);
+      } catch (e) {
+        log('Error:', e.name || e.message);
       }
-    };
+    }
 
-    await ensurePc();
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify(pc.localDescription));
-  } catch(e){
-    log('Error:', e.name || e.message);
-  }
-}
+    async function ensurePc() {
+      if (pc) return;
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc.onicecandidate = e => {
+        if (e.candidate && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+      };
+      pc.ontrack = e => { document.getElementById('remoteVideo').srcObject = e.streams[0]; };
+      if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    }
 
-async function ensurePc(){
-  if(pc) return;
-  pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
-  pc.onicecandidate = e => {
-    if(e.candidate && ws && ws.readyState===1) ws.send(JSON.stringify({type:'candidate',candidate:e.candidate}));
-  };
-  pc.ontrack = e => { document.getElementById('remoteVideo').srcObject = e.streams[0]; };
-  if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
-}
-
-findBtn.onclick = startCall;
-</script>
+    findBtn.onclick = startCall;
+  </script>
 </body>
+
 </html>
